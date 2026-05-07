@@ -12,14 +12,13 @@ class UserController extends Controller
 {
     public function store(Request $request)
     {
-        // Validation
         $validator = Validator::make($request->all(), [
             'name' => 'required|min:3',
             'email' => 'required|email|unique:users,email',
             'password' => [
                 'required',
                 'min:8',
-                'confirmed', //  Confirm password
+                'confirmed',
                 'regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*[@$!%*#?&]).+$/'
             ]
         ], [
@@ -41,7 +40,6 @@ class UserController extends Controller
             ], 422);
         }
 
-        // Save user
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
@@ -53,5 +51,11 @@ class UserController extends Controller
             'message' => 'Form submitted successfully',
             'data' => $user
         ]);
+    }
+
+    public function checkEmail(Request $request)
+    {
+        $exists = User::where('email', $request->email)->exists();
+        return response()->json(['available' => !$exists]);
     }
 }
