@@ -10,3 +10,4 @@ use Illuminate\Support\Facades\Route;
 >>>>>>> stages
 
 Route::post('/register', [UserController::class, 'store']);
+Route::post('/check-email', [UserController::class, 'checkEmail']);
