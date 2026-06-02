@@ -12,231 +12,357 @@ export default function Home() {
   const [errors, setErrors] = useState({});
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const [avatar, setAvatar] = useState("https://api.dicebear.com/7.x/micah/svg?seed=User");
-  const [emailStatus, setEmailStatus] = useState(null);
+  const [emailChecking, setEmailChecking] = useState(false);
+  const [emailAvailable, setEmailAvailable] = useState(null);
+  const [passwordStrength, setPasswordStrength] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
-  const [pwdStrength, setPwdStrength] = useState(0);
+  const [touched, setTouched] = useState({
+    name: false,
+    email: false,
+    password: false,
+    password_confirmation: false
+  });
 
+  // Debounced email check
   useEffect(() => {
-    const delayDebounceFn = setTimeout(async () => {
-      if (form.email.includes("@")) {
-        setEmailStatus("checking");
-        try {
-          const res = await axios.post("http://127.0.0.1:8000/api/check-email", { email: form.email });
-          setEmailStatus(res.data.available ? "available" : "taken");
-        } catch (err) {
-          setEmailStatus(null);
-        }
-      } else {
-        setEmailStatus(null);
-      }
-    }, 800);
-    return () => clearTimeout(delayDebounceFn);
-  }, [form.email]);
+    if (form.email && touched.email && form.email.includes('@')) {
+      const timeoutId = setTimeout(() => {
+        checkEmailAvailability();
+      }, 500);
+      return () => clearTimeout(timeoutId);
+    } else {
+      setEmailAvailable(null);
+    }
+  }, [form.email, touched.email]);
 
-  const checkStrength = (pass) => {
-    let score = 0;
-    if (!pass) return setPwdStrength(0);
-    if (pass.length > 5) score += 20;
-    if (pass.length > 7) score += 20;
-    if (/[A-Z]/.test(pass)) score += 20;
-    if (/[0-9]/.test(pass)) score += 20;
-    if (/[^A-Za-z0-9]/.test(pass)) score += 20;
-    setPwdStrength(score);
+  // Password strength checker
+  useEffect(() => {
+    if (form.password) {
+      calculatePasswordStrength(form.password);
+    } else {
+      setPasswordStrength(0);
+    }
+  }, [form.password]);
+
+  const calculatePasswordStrength = (password) => {
+    let strength = 0;
+    
+    if (password.length >= 8) strength += 25;
+    if (password.match(/[a-z]/)) strength += 25;
+    if (password.match(/[A-Z]/)) strength += 25;
+    if (password.match(/[0-9]/)) strength += 12.5;
+    if (password.match(/[@$!%*#?&]/)) strength += 12.5;
+    
+    setPasswordStrength(Math.min(100, strength));
+  };
+
+  const getStrengthColor = () => {
+    if (passwordStrength <= 25) return 'danger';
+    if (passwordStrength <= 50) return 'warning';
+    if (passwordStrength <= 75) return 'info';
+    return 'success';
+  };
+
+  const getStrengthText = () => {
+    if (passwordStrength <= 25) return 'Weak';
+    if (passwordStrength <= 50) return 'Fair';
+    if (passwordStrength <= 75) return 'Good';
+    return 'Strong';
+  };
+
+  const checkEmailAvailability = async () => {
+    if (!form.email || !form.email.includes('@')) return;
+    
+    setEmailChecking(true);
+    try {
+      const res = await axios.post("http://127.0.0.1:8000/api/check-email", {
+        email: form.email
+      });
+      setEmailAvailable(res.data.available);
+    } catch (error) {
+      setEmailAvailable(false);
+    } finally {
+      setEmailChecking(false);
+    }
   };
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm({ ...form, [name]: value });
-    let newErrors = { ...errors };
-
-    if (name === "name") {
-      setAvatar(`https://api.dicebear.com/7.x/micah/svg?seed=${value || "User"}`);
-      if (value.length < 3) {
-        newErrors.name = ["Minimum 3 characters required"];
-      } else {
-        delete newErrors.name;
-      }
+    setForm({
+      ...form,
+      [e.target.name]: e.target.value
+    });
+    
+    // Clear specific field error when user starts typing
+    if (errors[e.target.name]) {
+      setErrors({
+        ...errors,
+        [e.target.name]: undefined
+      });
     }
+  };
 
-    if (name === "email") {
-      if (!value.includes("@")) {
-        newErrors.email = ["Email must contain @"];
-      } else {
-        delete newErrors.email;
-      }
-    }
-
-    if (name === "password") {
-      checkStrength(value);
-      if (value.length < 8) {
-        newErrors.password = ["Minimum 8 characters required"];
-      } else {
-        delete newErrors.password;
-      }
-    }
-
-    if (name === "password" || name === "password_confirmation") {
-      const p1 = name === "password" ? value : form.password;
-      const p2 = name === "password_confirmation" ? value : form.password_confirmation;
-      if (p2 && p1 !== p2) {
-        newErrors.password_confirmation = ["Passwords do not match"];
-      } else {
-        delete newErrors.password_confirmation;
-      }
-    }
-
-    setErrors(newErrors);
+  const handleBlur = (field) => {
+    setTouched({
+      ...touched,
+      [field]: true
+    });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (emailStatus === "taken") return;
+    setLoading(true);
     setErrors({});
     setSuccess("");
-    setLoading(true);
+
+    // Mark all fields as touched
+    setTouched({
+      name: true,
+      email: true,
+      password: true,
+      password_confirmation: true
+    });
 
     try {
-      const res = await axios.post("http://127.0.0.1:8000/api/register", form);
+      const res = await axios.post(
+        "http://127.0.0.1:8000/api/register",
+        form
+      );
+
       setSuccess(res.data.message);
-      setForm({
-        name: "",
-        email: "",
-        password: "",
-        password_confirmation: ""
+      setForm({ 
+        name: "", 
+        email: "", 
+        password: "", 
+        password_confirmation: "" 
       });
-      setAvatar("https://api.dicebear.com/7.x/micah/svg?seed=User");
-      setPwdStrength(0);
-      setEmailStatus(null);
+      setEmailAvailable(null);
+      setPasswordStrength(0);
+      setTouched({
+        name: false,
+        email: false,
+        password: false,
+        password_confirmation: false
+      });
+      
+      // Auto-hide success message after 5 seconds
+      setTimeout(() => setSuccess(""), 5000);
+
     } catch (error) {
       if (error.response && error.response.status === 422) {
         setErrors(error.response.data.errors);
+      } else {
+        setErrors({ general: ["Something went wrong. Please try again."] });
       }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  };
-
-  const getStrengthColor = () => {
-    if (pwdStrength <= 20) return "bg-danger";
-    if (pwdStrength <= 60) return "bg-warning";
-    return "bg-success";
-  };
-
-  const getStrengthLabel = () => {
-    if (pwdStrength === 0) return "";
-    if (pwdStrength <= 20) return "Too Weak";
-    if (pwdStrength <= 60) return "Getting Better";
-    if (pwdStrength <= 80) return "Strong";
-    return "Very Strong";
   };
 
   return (
-    <div className="container mt-5 mb-5">
+    <div className="container mt-5">
       <div className="row justify-content-center">
-        <div className="col-md-5">
-          <div className="card shadow-lg border-0" style={{ borderRadius: "20px", overflow: "hidden" }}>
-            <div className="card-header bg-dark text-white text-center py-4 border-0">
-              <img 
-                src={avatar} 
-                alt="Avatar" 
-                width="90" 
-                height="90" 
-                className="bg-light rounded-circle mb-3 shadow" 
-                style={{ border: "4px solid white", transition: "all 0.4s ease" }} 
-              />
-              <h4 className="mb-0 fw-bold">Create Account</h4>
+        <div className="col-md-8 col-lg-6">
+          <div className="card shadow-lg border-0 rounded-3">
+            <div className="card-header bg-gradient bg-primary text-white text-center py-4 rounded-top-3">
+              <h3 className="mb-0">Create Account</h3>
+              <p className="mb-0 opacity-75">Join us today!</p>
             </div>
 
-            <div className="card-body p-4 bg-white">
-              {success && <div className="alert alert-success fw-bold text-center">{success}</div>}
+            <div className="card-body p-4">
+              {success && (
+                <div className="alert alert-success alert-dismissible fade show" role="alert">
+                  <i className="bi bi-check-circle-fill me-2"></i>
+                  {success}
+                  <button type="button" className="btn-close" onClick={() => setSuccess("")}></button>
+                </div>
+              )}
+
+              {errors.general && (
+                <div className="alert alert-danger">
+                  {errors.general[0]}
+                </div>
+              )}
 
               <form onSubmit={handleSubmit} noValidate>
+                {/* Name Field */}
                 <div className="mb-3">
-                  <label className="fw-bold text-muted small text-uppercase">Full Name</label>
-                  <input 
-                    type="text" 
-                    name="name" 
-                    className={`form-control form-control-lg ${errors.name ? 'is-invalid' : ''}`} 
-                    value={form.name} 
-                    onChange={handleChange} 
+                  <label className="form-label fw-semibold">
+                    <i className="bi bi-person-fill me-1"></i> Full Name
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    className={`form-control ${touched.name && errors.name ? 'is-invalid' : touched.name && !errors.name && form.name ? 'is-valid' : ''}`}
+                    value={form.name}
+                    onChange={handleChange}
+                    onBlur={() => handleBlur('name')}
+                    placeholder="Enter your full name"
                   />
-                  {errors.name && <small className="text-danger fw-bold">{errors.name}</small>}
+                  {touched.name && errors.name && (
+                    <div className="invalid-feedback">{errors.name[0]}</div>
+                  )}
+                  {touched.name && !errors.name && form.name && (
+                    <div className="valid-feedback">Looks good!</div>
+                  )}
                 </div>
 
-                <div className="mb-3 position-relative">
-                  <label className="fw-bold text-muted small text-uppercase">Email Address</label>
-                  <input 
-                    type="text" 
-                    name="email" 
-                    className={`form-control form-control-lg ${errors.email || emailStatus === 'taken' ? 'is-invalid' : emailStatus === 'available' ? 'is-valid' : ''}`} 
-                    value={form.email} 
-                    onChange={handleChange} 
-                  />
-                  {emailStatus === "checking" && <small className="text-info fw-bold">Checking availability...</small>}
-                  {emailStatus === "taken" && <small className="text-danger fw-bold">This email is already taken!</small>}
-                  {emailStatus === "available" && <small className="text-success fw-bold">Email is available!</small>}
-                  {errors.email && <small className="text-danger fw-bold d-block">{errors.email}</small>}
-                </div>
-
-                <div className="mb-3 position-relative">
-                  <label className="fw-bold text-muted small text-uppercase">Password</label>
+                {/* Email Field with Availability Check */}
+                <div className="mb-3">
+                  <label className="form-label fw-semibold">
+                    <i className="bi bi-envelope-fill me-1"></i> Email Address
+                  </label>
                   <div className="input-group">
-                    <input 
-                      type={showPassword ? "text" : "password"} 
-                      name="password" 
-                      className={`form-control form-control-lg ${errors.password ? 'is-invalid' : ''}`} 
-                      value={form.password} 
-                      onChange={handleChange} 
+                    <input
+                      type="email"
+                      name="email"
+                      className={`form-control ${touched.email && errors.email ? 'is-invalid' : touched.email && emailAvailable === true && !errors.email ? 'is-valid' : ''}`}
+                      value={form.email}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('email')}
+                      placeholder="your@email.com"
+                    />
+                    {emailChecking && (
+                      <span className="input-group-text bg-light">
+                        <span className="spinner-border spinner-border-sm"></span>
+                      </span>
+                    )}
+                    {touched.email && emailAvailable === true && !errors.email && (
+                      <span className="input-group-text bg-success text-white">
+                        <i className="bi bi-check-lg"></i>
+                      </span>
+                    )}
+                    {touched.email && emailAvailable === false && (
+                      <span className="input-group-text bg-danger text-white">
+                        <i className="bi bi-x-lg"></i>
+                      </span>
+                    )}
+                  </div>
+                  {touched.email && errors.email && (
+                    <div className="invalid-feedback d-block">{errors.email[0]}</div>
+                  )}
+                  {touched.email && emailAvailable === true && !errors.email && (
+                    <small className="text-success d-block mt-1">
+                      <i className="bi bi-check-circle-fill me-1"></i> Email is available
+                    </small>
+                  )}
+                  {touched.email && emailAvailable === false && (
+                    <small className="text-danger d-block mt-1">
+                      <i className="bi bi-x-circle-fill me-1"></i> Email is already taken
+                    </small>
+                  )}
+                </div>
+
+                {/* Password Field with Strength Meter */}
+                <div className="mb-3">
+                  <label className="form-label fw-semibold">
+                    <i className="bi bi-lock-fill me-1"></i> Password
+                  </label>
+                  <div className="input-group">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      name="password"
+                      className={`form-control ${touched.password && errors.password ? 'is-invalid' : touched.password && passwordStrength >= 75 && !errors.password ? 'is-valid' : ''}`}
+                      value={form.password}
+                      onChange={handleChange}
+                      onBlur={() => handleBlur('password')}
+                      placeholder="Create a strong password"
                     />
                     <button 
-                      type="button" 
-                      className="btn btn-outline-secondary px-3" 
+                      type="button"
+                      className="btn btn-outline-secondary"
                       onClick={() => setShowPassword(!showPassword)}
                     >
-                      {showPassword ? "Hide" : "Show"}
+                      <i className={`bi bi-eye${showPassword ? '-slash' : ''}-fill`}></i>
                     </button>
                   </div>
-                  {pwdStrength > 0 && (
+                  
+                  {/* Password Strength Meter */}
+                  {form.password && (
                     <div className="mt-2">
-                      <div className="progress" style={{ height: "8px", borderRadius: "10px" }}>
+                      <div className="progress" style={{ height: '5px' }}>
                         <div 
-                          className={`progress-bar ${getStrengthColor()}`} 
-                          style={{ width: `${pwdStrength}%`, transition: "width 0.4s ease" }}
+                          className={`progress-bar bg-${getStrengthColor()}`}
+                          style={{ width: `${passwordStrength}%` }}
+                          role="progressbar"
                         ></div>
                       </div>
-                      <small className={`fw-bold mt-1 d-block ${pwdStrength <= 60 ? 'text-warning' : 'text-success'}`}>
-                        {getStrengthLabel()}
+                      <small className={`text-${getStrengthColor()} d-block mt-1`}>
+                        Password Strength: {getStrengthText()}
+                      </small>
+                      <small className="text-muted d-block">
+                        <i className="bi bi-info-circle-fill me-1"></i>
+                        Must contain 8+ chars, uppercase, lowercase, number & special char
                       </small>
                     </div>
                   )}
-                  {errors.password && <small className="text-danger fw-bold">{errors.password}</small>}
+                  
+                  {touched.password && errors.password && (
+                    <div className="invalid-feedback d-block">{errors.password[0]}</div>
+                  )}
                 </div>
 
-                <div className="mb-4">
-                  <label className="fw-bold text-muted small text-uppercase">Confirm Password</label>
-                  <input 
-                    type="password" 
-                    name="password_confirmation" 
-                    className={`form-control form-control-lg ${errors.password_confirmation ? 'is-invalid' : ''}`} 
-                    value={form.password_confirmation} 
-                    onChange={handleChange} 
+                {/* Confirm Password Field */}
+                <div className="mb-3">
+                  <label className="form-label fw-semibold">
+                    <i className="bi bi-lock-fill me-1"></i> Confirm Password
+                  </label>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password_confirmation"
+                    className={`form-control ${touched.password_confirmation && errors.password ? 'is-invalid' : touched.password_confirmation && form.password === form.password_confirmation && form.password_confirmation ? 'is-valid' : ''}`}
+                    value={form.password_confirmation}
+                    onChange={handleChange}
+                    onBlur={() => handleBlur('password_confirmation')}
+                    placeholder="Confirm your password"
                   />
-                  {errors.password_confirmation && <small className="text-danger fw-bold">{errors.password_confirmation}</small>}
+                  {touched.password_confirmation && form.password !== form.password_confirmation && form.password_confirmation && (
+                    <div className="invalid-feedback d-block">Passwords do not match</div>
+                  )}
+                  {touched.password_confirmation && form.password === form.password_confirmation && form.password_confirmation && (
+                    <div className="valid-feedback d-block">Passwords match</div>
+                  )}
                 </div>
 
                 <button 
-                  className="btn btn-dark btn-lg w-100 py-3 fw-bold" 
-                  style={{ borderRadius: "12px" }} 
-                  disabled={loading || emailStatus === "taken"}
+                  type="submit" 
+                  className="btn btn-primary w-100 py-2 fw-semibold"
+                  disabled={loading}
                 >
-                  {loading ? "Creating Account..." : "Sign Up"}
+                  {loading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2"></span>
+                      Creating Account...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-person-plus-fill me-2"></i>
+                      Register Now
+                    </>
+                  )}
                 </button>
               </form>
+
+              <hr className="my-4" />
+              <p className="text-center text-muted mb-0">
+                Already have an account? <a href="#" className="text-primary">Sign In</a>
+              </p>
             </div>
           </div>
         </div>
       </div>
+
+      <style jsx>{`
+        .bg-gradient {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card {
+          transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
+        }
+      `}</style>
     </div>
   );
 }
